@@ -339,7 +339,3 @@ MIT
 ## Author
 
 KvPradeepthi
-
-## Deadline
-
-10 January 2026, 04:59 PM IST
