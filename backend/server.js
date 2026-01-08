@@ -322,4 +322,65 @@ app.listen(PORT, () => {
   console.log(`Payment Gateway API running on port ${PORT}`);
 });
 
+      // Public Endpoints for Checkout (No Authentication)
+app.get('/api/v1/orders/:order_id/public', async (req, res) => {
+  try {
+    const { order_id } = req.params;
+    const result = await pool.query('SELECT * FROM orders WHERE id = $1', [order_id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND_ERROR', description: 'Order not found' } });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: { code: 'SERVER_ERROR', description: error.message } });
+  }
+});
+
+app.post('/api/v1/payments/public', async (req, res) => {
+  try {
+    const { order_id, method, vpa, card } = req.body;
+    if (!order_id || !method) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST_ERROR', description: 'order_id and method required' } });
+    }
+    const orderResult = await pool.query('SELECT * FROM orders WHERE id = $1', [order_id]);
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND_ERROR', description: 'Order not found' } });
+    }
+    const order = orderResult.rows[0];
+    const paymentId = `pay_${Math.random().toString(36).substring(2, 18)}`;
+    const now = new Date().toISOString();
+    await pool.query(
+      `INSERT INTO payments (id, order_id, merchant_id, amount, currency, method, status, vpa, card_network, card_last4, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [paymentId, order_id, order.merchant_id, order.amount, order.currency, method, 'processing', 
+       method === 'upi' ? vpa : null, method === 'card' ? 'visa' : null, method === 'card' ? '1111' : null, now, now]
+    );
+    setTimeout(async () => {
+      const success = Math.random() < (method === 'upi' ? 0.9 : 0.95);
+      await pool.query('UPDATE payments SET status = $1, updated_at = $2 WHERE id = $3',
+        [success ? 'success' : 'failed', new Date().toISOString(), paymentId]);
+    }, Math.random() * 5000 + 5000);
+    res.status(201).json({ id: paymentId, order_id, merchant_id: order.merchant_id, amount: order.amount,
+      currency: order.currency, method, status: 'processing', vpa: method === 'upi' ? vpa : null,
+      card_network: method === 'card' ? 'visa' : null, card_last4: method === 'card' ? '1111' : null,
+      created_at: now, updated_at: now });
+  } catch (error) {
+    res.status(500).json({ error: { code: 'SERVER_ERROR', description: error.message } });
+  }
+});
+
+app.get('/api/v1/payments/:payment_id/public', async (req, res) => {
+  try {
+    const { payment_id } = req.params;
+    const result = await pool.query('SELECT * FROM payments WHERE id = $1', [payment_id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: { code: 'NOT_FOUND_ERROR', description: 'Payment not found' } });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: { code: 'SERVER_ERROR', description: error.message } });
+  }
+});
+
+
 module.exports = app;
